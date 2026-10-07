@@ -62,34 +62,69 @@ Out of scope: Hono server, SSE endpoints, dashboard web, full TUI panel (F2-F4).
 
 ## Tasks
 
-- [ ] T1 — F0 scaffold: package.json, tsconfig.json, biome.json, vitest.config.ts,
+- [x] T1 — F0 scaffold: package.json, tsconfig.json, biome.json, vitest.config.ts,
       .gitignore, src/index.ts (minimal server plugin), src/tui.tsx (minimal CLI plugin),
       opencode.jsonc (plugins -> absolute repo path); install green.
-      Route: delegated writer. Commit: -
-- [ ] T2 — Fixture capture tooling: scripts/capture-events.ts using @opencode/client
-      (Service.discover + headers), NDJSON output. Route: delegated writer (with T1). Commit: -
-- [ ] T3 — Capture REAL fixtures: run capture + spawn real subagent(s); curate NDJSON into
+      Route: delegated writer. Commit: 1d68e2f
+- [x] T2 — Fixture capture tooling: scripts/capture-events.ts using @opencode/client
+      (Service.discover + headers), NDJSON output. Route: delegated writer (with T1). Commit: 1d68e2f
+- [x] T3 — Capture REAL fixtures: run capture + spawn real subagent(s); curate NDJSON into
       src/hub/__fixtures__/*.json (one scenario per file). Route: parent (live orchestration
-      with real subagents cannot be delegated). Commit: -
-- [ ] T4 — F1 hub: src/hub/types.ts + src/hub/hub.ts (apply/snapshot/deltas, title parser,
-      tool-name resolution via pending map). Route: delegated writer. Commit: -
-- [ ] T5 — Hub tests: src/hub/events.test.ts driving hub.apply over real fixtures;
-      test-first where applicable (fixtures exist before hub code). Route: delegated writer (with T4). Commit: -
-- [ ] T6 — Verify plugin loads in a real OpenCode session (run session in repo with
+      with real subagents cannot be delegated). Commit: 9fa99ce
+- [x] T4 — F1 hub: src/hub/types.ts + src/hub/hub.ts (apply/snapshot/deltas, title parser,
+      tool-name resolution via pending map). Route: delegated writer. Commit: 7612005
+- [x] T5 — Hub tests: src/hub/events.test.ts driving hub.apply over real fixtures;
+      test-first where applicable (fixtures exist before hub code). Route: delegated writer (with T4). Commit: 7612005
+      Evidence: RED observed first (Cannot find module './hub'), then GREEN 19/19.
+      Parent spot check re-ran `bun run test` -> 19 passed.
+- [x] T6 — Verify plugin loads in a real OpenCode session (run session in repo with
       opencode.jsonc plugin path; check log for load line).
-      Route: parent. Commit: -
+      Route: parent. Commit: — (verification only)
+      Evidence: `opencode run --standalone` -> log line
+      `msg="loading plugin" id=/Users/.../ocswarm entrypoint=file://.../server.ts role=server`
+      with no failure, OpenCode watches server.ts + src/index.ts, and a temporary
+      setup probe wrote "setup ran: opencode 2.0.24" (probe removed afterwards).
+      Requires root shims + "./server" export (commit baea6e7); console.log from plugin
+      setup is NOT visible in `run --standalone` output — do not rely on it.
+
+## Key load-discovery (v2.0.24)
+
+- Local directory plugins: loader resolves root FILES via Bun.resolveSync:
+  server entry = `<repo>/server.ts` (or `<repo>/index.ts`), TUI entry = `<repo>/tui.tsx`.
+  The package exports map is NOT consulted for local directories; without a resolvable
+  server entry the plugin is silently skipped (no warning).
+- Registry packages (by name): specifier `<name>/server` / `<name>/tui` / `<name>` —
+  hence exports {".", "./server", "./tui"} covers both worlds.
+- `opencode.jsonc` project config IS read (verified via `opencode debug config`);
+  `.jsonc` and `.json` both work. Background service needs a restart (or use
+  `opencode run --standalone`) to pick up newly added project plugins.
 
 ## Verification evidence
 
-- (pending)
+- T1/T2: bun install clean; tsc --noEmit clean; biome clean; vitest passWithNoTests;
+  capture tool smoke-tested live (captured server.connected, SIGINT exit 0).
+- T3: 80 real events across 3 fixtures (25 lifecycle / 48 parallel / 7 root-failure),
+  verbatim payloads, original order; captured from real subagent runs spawned during
+  this session + one `opencode run` provider failure.
+- T4/T5: `bun run test` -> 19/19 (real fixture flows + synthetic tool.failed/deleted +
+  parser + status mapping + late-join + snapshot isolation + zero-I/O guard).
+  `bun run typecheck` clean; `bun run lint` exit 0. RED->GREEN observed by the writer;
+  parent spot check reproduced the passing run. Hub modules import nothing beyond
+  ./types (no node:/@opencode imports — enforced by a test).
+- T6: see T6 block above. Plugin setup executed in a real standalone session.
+- RDD is OFF (global user setting): no review ceremony; ordinary checks only.
+  `gentle-ai review assess` over residual docs change: passive, review_due false.
 
 ## Delivery strategy
 
-ask-on-risk (default). Forecast ~500-800 authored lines (mostly tests/fixtures) —
-single feature branch, work-unit commits per task. No push/PR (user decides).
+ask-on-risk (default). Total authored lines this feature ~1.4k (incl. fixtures/tests) —
+single feature branch feat/f0-f1-hub, one work-unit commit per task:
+c73c21e (docs), 1d68e2f (scaffold+tool), baea6e7+88e5164 (load fix), 9fa99ce (fixtures),
+7612005 (hub+tests). No push/PR (user decides).
 
 ## Open items / next
 
 - F2: Hono server on 127.0.0.1, /api/state, /api/stream (SSE of hub deltas), /api/info,
-  port fallback; URL discovery for the TUI plugin.
-- Mirror: Engram topic `odd/f0-f1-scaffold-hub/tasks` (sync after major updates).
+  port fallback; URL discovery for the TUI plugin (candidate: GET /api/info port scan).
+- F3/F4 as per plan.md (dashboard web, TUI panel).
+- Mirror: Engram topic `odd/f0-f1-scaffold-hub/tasks` (synced through T5).
