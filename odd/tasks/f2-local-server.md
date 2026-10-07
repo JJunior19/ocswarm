@@ -39,18 +39,32 @@ clients; the dashboard (F3) and TUI (F4) consume the endpoints.
 
 ## Tasks
 
-- [ ] T1 — Server app + wiring: `src/server/app.ts` (routes incl. streamSSE),
+- [x] T1 — Server app + wiring: `src/server/app.ts` (routes incl. streamSSE),
       `src/server/listen.ts` (port fallback, lazy Bun adapter),
       `src/index.ts` wiring (hub + broadcaster + server lifecycle),
-      `package.json` (+hono), tests for state/info/SSE-initial-batch/port
-      fallback. Route: delegated writer. Commit: -
-- [ ] T2 — Real-session verification: `opencode run --standalone` in repo,
-      then curl 127.0.0.1:<port>/api/info and /api/state; confirm SSE
-      content-type on /api/stream. Route: parent. Commit: -
+      `package.json` (+hono 4.13.13), tests for state/info/SSE-initial-batch/port
+      fallback. Route: delegated writer. Commit: 0a421fd
+      Evidence: 28/28 tests (19 hub + 4 app + 5 listen), typecheck clean, lint clean.
+      hono 4.13 note: SSE helper lives in "hono/streaming"; hono does not wire the
+      request abort signal on node (server adds its own signal listener + stream.abort).
+- [x] T2 — Real-session verification: plugin serves on 127.0.0.1:7777 from the
+      RESTARTED background service (project config re-scanned after restart), and
+      standalone runs work with port fallback. Route: parent. Commit: — (verification)
+      Evidence: `curl 127.0.0.1:7777/api/info` -> {"name":"ocswarm","version":"0.1.0",...};
+      `/api/state` -> live SwarmState with the current real session (running) and a
+      completed subagent session (both late-joined as "unknown" agents — matches the
+      documented materialization rule); `/api/stream` -> 200 text/event-stream.
 
 ## Verification evidence
 
-- (pending)
+- `bun run test` 28/28; `bun run typecheck` exit 0; `bun run lint` exit 0.
+- Live check (see T2): plugin instance of the real background service answering on
+  127.0.0.1:7777 with real event data; SSE headers correct; port released cleanly on
+  exit.
+- Head-up: an external gentle-ai tooling run overwrote `opencode.jsonc` with a merged
+  copy of the user's global config (agents/permissions). Restored to the committed
+  4-line version (git checkout); the tooling artifact `.gentle-ai-default-agent.json`
+  remains untracked and was not committed.
 
 ## Delivery strategy
 
