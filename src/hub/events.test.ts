@@ -349,6 +349,126 @@ describe("late-joining streams", () => {
   });
 });
 
+describe("live cost from injected pricing", () => {
+  /** USD per million tokens — fake rates for the fixture-shaped model p/m. */
+  const RATES = { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.5 };
+  /**
+   * Hand-computed weighted sum: 1×1 + 2×0.5 + 0.1×0.25 + 0.5×0.1
+   * = 1 + 1 + 0.025 + 0.05 → $2.075.
+   */
+  const EXPECTED_COST =
+    (1_000_000 * RATES.input +
+      500_000 * RATES.output +
+      250_000 * RATES.cacheRead +
+      100_000 * RATES.cacheWrite) /
+    1_000_000;
+
+  /** Cumulative usage as captured from the server: `cost` is 0 (unpopulated). */
+  const USAGE = {
+    sessionID: "ses_cost",
+    cost: 0,
+    tokens: { input: 1_000_000, output: 500_000, cache: { read: 250_000, write: 100_000 } },
+  };
+
+  function pricedHub(): ReturnType<typeof createHub> {
+    return createHub({
+      pricing: ({ providerID, modelID }) =>
+        providerID === "p" && modelID === "m" ? RATES : undefined,
+    });
+  }
+
+  function seedModelStep(hub: ReturnType<typeof createHub>): void {
+    hub.apply({
+      type: "session.created",
+      created: 1,
+      data: { sessionID: "ses_cost", agent: "general", title: "Cost test" },
+    });
+    hub.apply({
+      type: "session.step.started",
+      created: 2,
+      data: {
+        sessionID: "ses_cost",
+        assistantMessageID: "msg_1",
+        agent: "general",
+        model: { id: "m", providerID: "p" },
+      },
+    });
+  }
+
+  it("computes costUSD from cumulative tokens × injected rates", () => {
+    const hub = pricedHub();
+    seedModelStep(hub);
+    hub.apply({ type: "session.usage.updated", created: 3, data: USAGE });
+    const agent = must(hub.snapshot().agents.ses_cost);
+    expect(agent.costUSD).toBeCloseTo(EXPECTED_COST, 12);
+    expect(agent.costUSD).toBeCloseTo(2.075, 12);
+  });
+
+  it("recomputes costUSD on every cumulative usage overwrite", () => {
+    const hub = pricedHub();
+    seedModelStep(hub);
+    hub.apply({ type: "session.usage.updated", created: 3, data: USAGE });
+    hub.apply({
+      type: "session.usage.updated",
+      created: 4,
+      data: {
+        ...USAGE,
+        tokens: { input: 2_000_000, output: 1_000_000, cache: { read: 500_000, write: 200_000 } },
+      },
+    });
+    expect(must(hub.snapshot().agents.ses_cost).costUSD).toBeCloseTo(EXPECTED_COST * 2, 12);
+  });
+
+  it("keeps cost at 0 when usage arrives without any prior step.started", () => {
+    const hub = pricedHub();
+    hub.apply({
+      type: "session.created",
+      created: 1,
+      data: { sessionID: "ses_cost", agent: "general", title: "Cost test" },
+    });
+    hub.apply({ type: "session.usage.updated", created: 3, data: USAGE });
+    expect(must(hub.snapshot().agents.ses_cost).costUSD).toBe(0);
+  });
+
+  it("keeps cost at 0 when pricing returns no rates for the model", () => {
+    const hub = createHub({ pricing: () => undefined });
+    seedModelStep(hub);
+    hub.apply({ type: "session.usage.updated", created: 3, data: USAGE });
+    expect(must(hub.snapshot().agents.ses_cost).costUSD).toBe(0);
+  });
+
+  it("default createHub() stays backwards compatible (no pricing → cost 0)", () => {
+    const hub = createHub();
+    seedModelStep(hub);
+    hub.apply({ type: "session.usage.updated", created: 3, data: USAGE });
+    expect(must(hub.snapshot().agents.ses_cost).costUSD).toBe(0);
+  });
+
+  it("does not bill the reasoning bucket (it rides inside output)", () => {
+    const hub = pricedHub();
+    seedModelStep(hub);
+    hub.apply({
+      type: "session.usage.updated",
+      created: 3,
+      data: { ...USAGE, tokens: { ...USAGE.tokens, reasoning: 987_654 } },
+    });
+    expect(must(hub.snapshot().agents.ses_cost).costUSD).toBeCloseTo(EXPECTED_COST, 12);
+  });
+
+  it("session.deleted clears the model so a recreated session costs 0 again", () => {
+    const hub = pricedHub();
+    seedModelStep(hub);
+    hub.apply({ type: "session.deleted", created: 4, data: { sessionID: "ses_cost" } });
+    hub.apply({
+      type: "session.created",
+      created: 5,
+      data: { sessionID: "ses_cost", agent: "general", title: "Cost test again" },
+    });
+    hub.apply({ type: "session.usage.updated", created: 6, data: USAGE });
+    expect(must(hub.snapshot().agents.ses_cost).costUSD).toBe(0);
+  });
+});
+
 describe("snapshot isolation", () => {
   it("never exposes internal references", () => {
     const hub = createHub();

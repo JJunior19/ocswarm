@@ -22,6 +22,13 @@
  *   (cumulative per session → overwrite, never add). `session.step.ended`
  *   tokens/cost are per-step and ignored; only its `files` merge into
  *   filesTouched (unique, first-seen order, capped at 50).
+ * - Live cost (F5.2): captured usage events carry `cost: 0`, so when the
+ *   session's model (tracked from `session.step.started`'s `data.model`) has
+ *   rates via injected `deps.pricing`, costUSD is computed as
+ *   `(input×r.input + output×r.output + cacheRead×r.cacheRead +
+ *   cacheWrite×r.cacheWrite) / 1e6`. The `reasoning` bucket is NOT billed —
+ *   it rides inside output. Without a known model or rates, the event's own
+ *   `cost` field is kept as before (0 in practice — never fabricate).
  * - `session.execution.interrupted` maps to `idle`, not `error`: the agent
  *   stopped on demand (user/shutdown/superseded/inactivity) — stopped ≠ failed.
  * - "currentTool null" from the plan prose is modelled as `undefined` (the
@@ -60,6 +67,30 @@ interface PendingTool {
   startedAt: number;
 }
 
+/** Rates in USD per million tokens for one model (models.dev pricing). */
+export interface PricingRate {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** A driving model identity as carried by `session.step.started`. */
+export interface ModelRef {
+  providerID: string;
+  modelID: string;
+}
+
+/** Optional hub dependencies; everything defaults to today's behaviour. */
+export interface HubDeps {
+  /**
+   * Rate lookup for live cost computation. Returning undefined (or omitting
+   * the dependency entirely) keeps the event's own `cost` field — never
+   * fabricate a rate.
+   */
+  pricing?: (model: ModelRef) => PricingRate | undefined;
+}
+
 export function parseSubagentTitle(title: string): ParsedTitle {
   const match = SUBAGENT_SUFFIX.exec(title);
   const agent = match?.[1];
@@ -67,12 +98,14 @@ export function parseSubagentTitle(title: string): ParsedTitle {
   return { task: title.slice(0, match.index).trimEnd(), agent };
 }
 
-export function createHub(): Hub {
+export function createHub(deps: HubDeps = {}): Hub {
   const state: SwarmState = { roots: [], agents: {}, updatedAt: 0 };
   /** partID → in-flight tool call (global: names resolve even pre-materialization). */
   const pending = new Map<string, PendingTool>();
   /** sessionID → partID of the tool currently exposed as `currentTool`. */
   const currentPart = new Map<string, string>();
+  /** sessionID → last driving model (usage.updated carries no model — see F5.2). */
+  const sessionModel = new Map<string, ModelRef>();
 
   function cloneTool(tool: SwarmAgent["currentTool"]): SwarmAgent["currentTool"] {
     return tool ? { ...tool } : undefined;
@@ -200,6 +233,7 @@ export function createHub(): Hub {
 
       case "session.deleted": {
         if (!sessionID) return [];
+        sessionModel.delete(sessionID); // recreated sessions restart unpriced
         const hadAgent = sessionID in state.agents;
         const rootIndex = state.roots.indexOf(sessionID);
         if (!hadAgent && rootIndex < 0) return [];
@@ -317,8 +351,15 @@ export function createHub(): Hub {
       // agents — step events still never materialize (no phantom orchestrators).
       case "session.step.started": {
         if (!sessionID) return [];
+        // Track the session's driving model for live cost (F5.2): usage.updated
+        // carries no model, and this event already parses structured data here.
+        // Internal bookkeeping only — no delta, no timestamp bump.
+        const model = asRecord(data, "model");
+        const modelID = asString(model, "id");
+        const providerID = asString(model, "providerID");
+        if (modelID && providerID) sessionModel.set(sessionID, { providerID, modelID });
         const agent = state.agents[sessionID];
-        if (!agent || agent.agent !== "unknown") return [];
+        if (agent?.agent !== "unknown") return [];
         const name = asString(data, "agent");
         if (!name) return [];
         state.updatedAt = created;
@@ -361,7 +402,20 @@ export function createHub(): Hub {
           cacheRead: asNumber(cache, "read") ?? agent.tokens.cacheRead,
           cacheWrite: asNumber(cache, "write") ?? agent.tokens.cacheWrite,
         };
-        agent.costUSD = asNumber(data, "cost") ?? agent.costUSD;
+        // Real usage events carry `cost: 0`, so compute from the injected
+        // pricing when this session's model has rates (F5.2). Reasoning tokens
+        // ride inside output and are not billed again. No model/rates → keep
+        // the event's own `cost` field (never fabricate).
+        const model = sessionModel.get(sessionID);
+        const rates = model ? deps.pricing?.(model) : undefined;
+        agent.costUSD =
+          rates !== undefined
+            ? (agent.tokens.input * rates.input +
+                agent.tokens.output * rates.output +
+                agent.tokens.cacheRead * rates.cacheRead +
+                agent.tokens.cacheWrite * rates.cacheWrite) /
+              1_000_000
+            : (asNumber(data, "cost") ?? agent.costUSD);
         return [{ type: "agent.upsert", agent: cloneAgent(agent) }];
       }
 
