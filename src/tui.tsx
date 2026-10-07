@@ -7,6 +7,8 @@
  * - Registers the `/swarm` command (palette + slash) that opens the swarm
  *   tree panel in the current session; `o` inside the panel opens the
  *   dashboard in the browser.
+ * - Notifies (differentiated ✔/✗, OS notification while blurred) when a
+ *   background subagent ends or fails, off the data layer's lifecycle stream.
  */
 
 import { Plugin, usePlugin } from "@opencode/plugin/tui";
@@ -14,6 +16,7 @@ import { createMemo, Show } from "solid-js";
 import { discoverDashboard } from "./tui/discover";
 import { TreePanel } from "./tui/TreePanel";
 import { setDiscoveredUrl } from "./tui/urls";
+import { startSubagentWatcher } from "./tui/watch";
 
 /** Persistent footer indicator: how many subagents are alive right now. */
 function FooterBadge() {
@@ -60,5 +63,8 @@ export default Plugin.define({
         },
       ],
     }));
+    // Setup's return value is the plugin teardown hook: the lifecycle
+    // subscription dies with the plugin.
+    return startSubagentWatcher(context);
   },
 });
