@@ -1,10 +1,10 @@
 import { Plugin } from "@opencode/plugin";
 import packageJson from "../package.json";
-import type { PricingRate } from "./hub/hub";
 import { createHub } from "./hub/hub";
 import type { SwarmDelta } from "./hub/types";
 import { buildApp } from "./server/app";
 import { startServer } from "./server/listen";
+import { buildPricing, type PricingFn } from "./server/pricing";
 
 const { version } = packageJson as { version: string };
 
@@ -13,42 +13,27 @@ export default Plugin.define({
   async setup(ctx) {
     console.log(`[ocswarm] plugin loaded (server) — opencode ${ctx.app.version}`);
     // Live cost (F5.2): models.dev pricing ships inside the OpenCode server,
-    // so list models once at setup and key rates (USD per million tokens) by
-    // `providerID/modelID`. Unknown models price to undefined → costUSD stays
-    // 0. Base tier = the untiered cost entry, falling back to the first tier.
+    // so list models once at setup. buildPricing maps the underlying model's
+    // real price onto all-zero plan providers (e.g. zai-coding-plan →
+    // opencode-go rates for glm); unknown models price to undefined →
+    // costUSD stays 0 (never fabricate).
     //
     // Deferred ON PURPOSE: the event tap below must subscribe before this
     // setup promise yields. Awaiting model.list() first registered the tap
     // after a real async gap and it never received another event (live
     // regression). Late rate resolution is harmless: usage tokens are
     // cumulative, so the next usage.updated recomputes the cost anyway.
-    const rates = new Map<string, PricingRate>();
+    let currentPricing: PricingFn = () => undefined;
     void ctx.model.list().then(
       (models) => {
-        for (const model of models.data) {
-          const cost = model.cost.find((entry) => entry.tier === undefined) ?? model.cost[0];
-          if (!cost) continue;
-          rates.set(`${model.providerID}/${model.modelID}`, {
-            input: cost.input,
-            output: cost.output,
-            cacheRead: cost.cache.read,
-            cacheWrite: cost.cache.write,
-          });
-        }
-        // Debug (F5.2 verification): confirm the map populated. Remove once
-        // live cost is verified.
-        console.warn(`[ocswarm] pricing map loaded: ${rates.size} models`);
+        currentPricing = buildPricing(models.data);
+        console.warn(`[ocswarm] pricing loaded (${models.data.length} catalog models)`);
       },
-      (error) => console.warn(`[ocswarm] model pricing unavailable — live cost disabled (${error})`),
+      (error) =>
+        console.warn(`[ocswarm] model pricing unavailable — live cost disabled (${error})`),
     );
     const hub = createHub({
-      pricing: ({ providerID, modelID }) => {
-        const rate = rates.get(`${providerID}/${modelID}`);
-        if (!rate) {
-          console.warn(`[ocswarm] no pricing for ${providerID}/${modelID} (map has ${rates.size})`);
-        }
-        return rate;
-      },
+      pricing: (model) => currentPricing(model),
     });
     /** Connected SSE clients; hub deltas are fanned out to all of them. */
     const broadcaster = new Set<(deltas: SwarmDelta[]) => void>();
