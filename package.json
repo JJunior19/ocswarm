@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./server": "./src/index.ts",
     "./tui": "./src/tui.tsx"
   },
   "scripts": {
