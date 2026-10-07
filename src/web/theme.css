@@ -77,9 +77,23 @@ body {
   color: var(--muted);
 }
 
+.totals {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .main {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 
 .footer {
@@ -153,4 +167,337 @@ body {
   transform-box: fill-box;
   transform-origin: center;
   animation: pulse-ring 1.6s ease-out infinite;
+}
+
+/* --- selection (F5) --- */
+
+.node-group {
+  cursor: pointer;
+}
+
+/* Subtle dashed ring around the selected node, just outside the circle. */
+.node-selected {
+  fill: none;
+  stroke: var(--fg);
+  stroke-opacity: 0.55;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+/* --- detail panel (F5) --- */
+
+.detail {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+
+.detail-dot {
+  flex-shrink: 0;
+}
+
+.detail-running {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.detail-idle {
+  background: var(--idle);
+}
+
+.detail-done {
+  background: var(--blue);
+}
+
+.detail-error {
+  background: var(--error);
+}
+
+.detail-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.detail-close {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.detail-close:hover {
+  color: var(--fg);
+}
+
+.detail-body {
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.detail-task {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.detail-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  font-size: 12px;
+}
+
+.detail-meta dt {
+  color: var(--muted);
+}
+
+.detail-meta dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-elapsed {
+  color: var(--blue);
+}
+
+.detail-tool {
+  margin: 0;
+  color: var(--blue);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.detail-tool-summary {
+  color: var(--muted);
+}
+
+.detail-section h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.detail-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-toolcalls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.detail-toolcall {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.detail-glyph {
+  flex-shrink: 0;
+}
+
+.detail-glyph-completed {
+  color: var(--green);
+}
+
+.detail-glyph-error {
+  color: var(--error);
+}
+
+.detail-glyph-running {
+  color: var(--blue);
+}
+
+.detail-toolcall-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-toolcall-at {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.detail-cost {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-total {
+  font-weight: 700;
+}
+
+.detail-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.detail-file {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* truncate from the left: keep the file name's tail visible */
+  text-align: left;
+}
+
+/* --- gantt strip (F5) --- */
+
+.gantt {
+  flex-shrink: 0;
+  max-height: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px 6px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.gantt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gantt-label {
+  width: 170px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-track {
+  position: relative;
+  flex: 1;
+  height: 12px;
+  background: color-mix(in srgb, var(--line) 40%, transparent);
+  border-radius: 3px;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border: none;
+  padding: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  min-width: 2px;
+}
+
+.gantt-bar-selected {
+  outline: 1px solid var(--fg);
+  outline-offset: 1px;
+}
+
+.gantt-running {
+  background: var(--green);
+}
+
+.gantt-idle {
+  background: var(--idle);
+}
+
+.gantt-done {
+  background: var(--blue);
+}
+
+.gantt-error {
+  background: var(--error);
+}
+
+@keyframes pulse-bar {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.gantt-bar.gantt-running {
+  animation: pulse-bar 1.6s ease-in-out infinite;
+}
+
+.gantt-axis .gantt-track {
+  height: 14px;
+  background: none;
+  border-radius: 0;
+}
+
+.gantt-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Keep the end labels fully inside the strip. */
+.gantt-tick:first-child {
+  transform: none;
+}
+
+.gantt-tick:last-child {
+  transform: translateX(-100%);
 }

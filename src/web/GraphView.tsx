@@ -7,9 +7,11 @@ import {
   type SimulationNodeDatum,
 } from "d3-force";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
+import { formatElapsed } from "./format";
 import { type AgentRow, type ClientState, deriveRows } from "./reducer";
-import type { AgentStatus, SwarmAgent } from "./types";
+import type { AgentStatus } from "./types";
+import { useNow } from "./useNow";
 
 // Fixed logical viewport; the SVG scales to its container via CSS.
 const WIDTH = 880;
@@ -37,14 +39,6 @@ interface LayoutNode extends SimulationNodeDatum {
 
 function truncate(text: string, max = TASK_MAX_CHARS): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
-}
-
-/** mm:ss elapsed; freezes at endedAt once the agent finished. */
-function elapsedText(agent: SwarmAgent, now: number): string {
-  const seconds = Math.max(0, Math.floor(((agent.endedAt ?? now) - agent.startedAt) / 1000));
-  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const ss = String(seconds % 60).padStart(2, "0");
-  return `${mm}:${ss}`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -103,17 +97,15 @@ function useNodeLayout(rows: AgentRow[]): Map<string, Pos> {
   return cache.current.positions;
 }
 
-/** 1Hz clock driving the per-node elapsed timers. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
-
-export function GraphView({ state }: { state: ClientState }) {
+export function GraphView({
+  state,
+  selected,
+  onSelect,
+}: {
+  state: ClientState;
+  selected: string | undefined;
+  onSelect: (sessionID: string | undefined) => void;
+}) {
   const rows = useMemo(() => deriveRows(state), [state]);
   const positions = useNodeLayout(rows);
   const now = useNow();
@@ -134,11 +126,13 @@ export function GraphView({ state }: { state: ClientState }) {
     .filter((entry): entry is { row: AgentRow; pos: Pos } => entry.pos !== undefined);
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: SVG canvas is pointer-first; keyboard users clear selection with the global Escape handler.
     <svg
       className="graph"
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
       aria-label="ocswarm live agent graph"
+      onClick={() => onSelect(undefined)}
     >
       <title>ocswarm live agent graph</title>
 
@@ -148,9 +142,28 @@ export function GraphView({ state }: { state: ClientState }) {
 
       <AnimatePresence>
         {placed.map(({ row, pos }) => (
-          // Outer <g> owns the static position; inner motion.g owns the
-          // spawn/exit spring so CSS scale never fights the transform.
-          <g key={row.agent.sessionID} transform={`translate(${pos.x} ${pos.y})`}>
+          // Outer <g> owns the static position and the click target; inner
+          // motion.g owns the spawn/exit spring so CSS scale never fights the
+          // transform.
+          // biome-ignore lint/a11y/useSemanticElements: SVG node groups cannot be <button>; role + tabIndex is the SVG idiom.
+          <g
+            key={row.agent.sessionID}
+            className="node-group"
+            role="button"
+            tabIndex={0}
+            aria-label={`select ${row.agent.agent}`}
+            transform={`translate(${pos.x} ${pos.y})`}
+            onClick={(event) => {
+              event.stopPropagation(); // keep the svg background clear-click
+              onSelect(row.agent.sessionID);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(row.agent.sessionID);
+              }
+            }}
+          >
             <motion.g
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -160,6 +173,9 @@ export function GraphView({ state }: { state: ClientState }) {
             >
               {row.agent.status === "running" && (
                 <circle className="pulse-ring" r={NODE_RADIUS + 6} />
+              )}
+              {selected === row.agent.sessionID && (
+                <circle className="node-selected" r={NODE_RADIUS + 3} />
               )}
               <circle
                 className="node-circle"
@@ -178,7 +194,7 @@ export function GraphView({ state }: { state: ClientState }) {
                 </text>
               )}
               <text className="node-elapsed" y={NODE_RADIUS + 38} textAnchor="middle">
-                {elapsedText(row.agent, now)}
+                {formatElapsed((row.agent.endedAt ?? now) - row.agent.startedAt)}
               </text>
             </motion.g>
           </g>
