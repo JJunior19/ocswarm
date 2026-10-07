@@ -24,6 +24,7 @@ export interface SwarmAgent {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUSD: number;
   filesTouched: string[]; // best-effort from step.ended
+  archived?: boolean; // session deleted upstream; kept for history (F5.3)
 }
 
 export interface SwarmState {

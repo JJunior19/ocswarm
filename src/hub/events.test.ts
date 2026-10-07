@@ -496,3 +496,23 @@ describe("zero I/O constraint", () => {
     }
   });
 });
+
+describe("hub.setTitle (F5.3 title backfill)", () => {
+  it("sets a late-joined session's title and emits agent.upsert", () => {
+    const hub = createHub();
+    hub.apply({ type: "session.execution.started", created: 20, data: { sessionID: "ses_late" } });
+    const deltas = hub.setTitle("ses_late", "Implementar ocswarm: fase 2", 30);
+    expect(deltas).toHaveLength(1);
+    expect(must(deltas[0]).type).toBe("agent.upsert");
+    expect(must(hub.snapshot().agents["ses_late"]).title).toBe("Implementar ocswarm: fase 2");
+  });
+
+  it("is a no-op for unknown sessions, empty titles, and unchanged values", () => {
+    const hub = createHub();
+    hub.apply({ type: "session.created", created: 1, data: { sessionID: "s", agent: "general", title: "T" } });
+    expect(hub.setTitle("ses_ghost", "x", 2)).toEqual([]);
+    expect(hub.setTitle("s", "", 3)).toEqual([]);
+    expect(hub.setTitle("s", "T", 4)).toEqual([]);
+    expect(must(hub.snapshot().agents["s"]).title).toBe("T");
+  });
+});

@@ -23,6 +23,7 @@ export interface SwarmAgent {
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number };
   costUSD: number;
   filesTouched: string[];
+  archived?: boolean; // session deleted upstream; dimmed in the UI (F5.3)
 }
 
 /** Snapshot shape served by GET /api/state (updatedAt is client-ignored). */

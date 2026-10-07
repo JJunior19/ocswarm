@@ -52,6 +52,7 @@ import { asNumber, asRecord, asString, asStringArray } from "./types";
 export interface Hub {
   apply(event: HubEvent): SwarmDelta[];
   snapshot(): SwarmState;
+  setTitle(sessionID: string, title: string, at?: number): SwarmDelta[];
 }
 
 /** Trailing `(@<name> subagent)` marker — present pre-2.0.24, absent since. */
@@ -433,5 +434,18 @@ export function createHub(deps: HubDeps = {}): Hub {
     return { roots: [...state.roots], agents, updatedAt: state.updatedAt };
   }
 
-  return { apply, snapshot };
+  /**
+   * Backfill a session's title out-of-band (F5.3): the TUI posts the current
+   * session title so late-joined sessions recover their identity. No-op for
+   * unknown sessions, empty titles, and unchanged values. Never materializes.
+   */
+  function setTitle(sessionID: string, title: string, at: number = Date.now()): SwarmDelta[] {
+    const agent = state.agents[sessionID];
+    if (!agent || !title || agent.title === title) return [];
+    agent.title = title;
+    state.updatedAt = at;
+    return [{ type: "agent.upsert", agent: cloneAgent(agent) }];
+  }
+
+  return { apply, snapshot, setTitle };
 }
