@@ -8,6 +8,9 @@
  * timer are both abort-aware so a disconnect leaves nothing behind.
  */
 
+import { existsSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { Hub } from "../hub/hub";
@@ -23,10 +26,57 @@ export interface ServerDeps {
   hub: Hub;
   subscribeDeltas: (cb: (deltas: SwarmDelta[]) => void) => () => void;
   info: ServerInfo;
+  /**
+   * Directory of the built dashboard (dist/web, F3). When set, `/` and other
+   * non-/api GETs serve files from it (traversal-guarded); when unset or when
+   * a file is missing, `/` keeps the exact F2 placeholder text.
+   */
+  staticRoot?: string;
 }
 
 /** SSE keepalive cadence — comment frames keep idle proxies from timing out. */
 const KEEPALIVE_MS = 15_000;
+
+/** Fallback body for `/` when the dashboard bundle is absent. */
+const PLACEHOLDER =
+  "ocswarm local server — dashboard arrives in F3 (see /api/info, /api/state, /api/stream)";
+
+/** Small extension → content-type map for the handful of asset kinds we ship. */
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".map": "application/json; charset=utf-8",
+};
+
+/**
+ * Resolve one HTTP pathname to a file under `root`, or undefined on any miss
+ * (traversal attempt, unknown extension, missing file, directory). The
+ * contains-check runs on the DECODED path, so `..%2f`-style escapes are caught.
+ */
+async function serveStaticFile(root: string, pathname: string): Promise<Response | undefined> {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return undefined; // malformed escape sequence
+  }
+  if (decoded.includes("\0")) return undefined;
+  const relative = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "");
+  const rootDir = resolve(root);
+  const filePath = resolve(rootDir, relative);
+  if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) return undefined;
+  if (!existsSync(filePath)) return undefined;
+  const info = await stat(filePath).catch(() => undefined);
+  if (!info?.isFile()) return undefined;
+  const contentType = CONTENT_TYPES[extname(filePath).toLowerCase()];
+  if (!contentType) return undefined;
+  const body = await readFile(filePath);
+  return new Response(body, { headers: { "content-type": contentType } });
+}
 
 /** Strip `type` from a delta; the SSE event name carries it instead. */
 function toPayload(delta: SwarmDelta): Record<string, unknown> {
@@ -121,11 +171,20 @@ export function buildApp(deps: ServerDeps): Hono {
     }),
   );
 
-  app.get("/", (c) =>
-    c.text(
-      "ocswarm local server — dashboard arrives in F3 (see /api/info, /api/state, /api/stream)",
-    ),
-  );
+  // Static dashboard (F3) + placeholder fallback. Registered LAST so /api/*
+  // routes always win; with no staticRoot the F2 behaviour is byte-identical.
+  if (deps.staticRoot) {
+    const root = deps.staticRoot;
+    app.get("*", async (c) => {
+      const pathname = new URL(c.req.url).pathname;
+      const file = await serveStaticFile(root, pathname);
+      if (file) return file;
+      if (pathname === "/") return c.text(PLACEHOLDER);
+      return c.text("not found", 404);
+    });
+  } else {
+    app.get("/", (c) => c.text(PLACEHOLDER));
+  }
 
   return app;
 }

@@ -11,17 +11,27 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "build:web": "vite build src/web",
     "lint": "biome check src scripts",
     "format": "biome check --write src scripts"
   },
   "dependencies": {
     "@opencode/plugin": "latest",
-    "hono": "^4.0.0"
+    "d3-force": "^3.0.0",
+    "framer-motion": "^12.0.0",
+    "hono": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
     "@opencode/client": "latest",
+    "@types/d3-force": "^3.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
     "typescript": "^5.7.0",
+    "vite": "^7.0.0",
     "vitest": "^3.0.0"
   },
   "peerDependencies": {

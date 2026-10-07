@@ -1,0 +1,156 @@
+/* ocswarm dashboard — GitHub-dark family, dark theme only. */
+
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --line: #30363d;
+  --fg: #e6edf3;
+  --muted: #6e7681;
+  --green: #7ee787;
+  --blue: #79c0ff;
+  --error: #f85149;
+  --idle: #8b949e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot-on {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.dot-off {
+  background: var(--idle);
+}
+
+.count {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.main {
+  flex: 1;
+  min-height: 0;
+}
+
+.footer {
+  padding: 8px 20px;
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+/* --- graph --- */
+
+.graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.edge {
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.node-circle {
+  fill: var(--panel);
+  stroke-width: 2;
+}
+
+.node-name {
+  fill: var(--fg);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.node-task {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.node-tool {
+  fill: var(--blue);
+  font-size: 11px;
+}
+
+.node-elapsed {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pulsing ring on running agents (SVG circle + CSS animation). */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.pulse-ring {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pulse-ring 1.6s ease-out infinite;
+}

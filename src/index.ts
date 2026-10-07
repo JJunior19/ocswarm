@@ -22,6 +22,9 @@ export default Plugin.define({
       hub,
       subscribeDeltas,
       info: { name: "ocswarm", version, startedAt: Date.now() },
+      // Built dashboard bundle (`bun run build:web`). serveStaticFile checks
+      // existence per request, so a missing build falls back to the placeholder.
+      staticRoot: new URL("../dist/web", import.meta.url).pathname,
     });
     const controller = new AbortController();
     void (async () => {

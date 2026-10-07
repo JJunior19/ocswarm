@@ -3,17 +3,15 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "types": ["vitest/globals"],
-    "jsx": "preserve",
-    "jsxImportSource": "solid-js"
+    "types": ["vite/client"]
   },
-  "include": ["src", "scripts", "server.ts", "tui.tsx", "vitest.config.ts"],
-  "exclude": ["src/web"]
+  "include": ["."]
 }
