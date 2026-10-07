@@ -44,28 +44,54 @@ Finish plan.md F5 "Detalle y métricas":
 
 ## Tasks
 
-- [ ] T1 — Dashboard: AgentDetail side panel (click + Esc/× close), Gantt bottom strip,
+- [x] T1 — Dashboard: AgentDetail side panel (click + Esc/× close), Gantt bottom strip,
       header token/cost totals, pure format/selector helpers + tests. Bounded type
       check for a messages/diff API → `/api/session/:id` only if grounded.
-      Route: delegated writer. Commit: -
-- [ ] T2 — TUI: attention.notify on subagent done/error, differentiated variant,
+      Route: delegated writer. Commit: 469c428
+      Evidence: 73/73 tests (15 nuevos: 9 format, 6 ganttScale), vite build OK,
+      typecheck root + web. **Endpoint NO agregado con evidencia**: el contexto de
+      plugin (`plugin.d.ts`) expone `session: Pick<...>` sin diff ni messages;
+      `session.diff` existe solo en `@opencode/client` crudo (plugins nunca lo
+      reciben) y `ctx.vcs.diff` pide un VcsScope no grounded → limitación documentada.
+- [x] T2 — TUI: attention.notify on subagent done/error, differentiated variant,
       decision logic pure + tested, grounded data source (data.listen or SSE fallback).
-      Route: delegated writer (sequential after T1). Commit: -
-- [ ] T3 — Close-out: full test/typecheck/lint, vite build, live dashboard check,
-      docs + mirror update. Route: parent. Commit: -
+      Route: delegated writer (sequential after T1). Commit: 7a8c36e
+      Evidence: 81/81 tests (8 nuevos en notify.test.ts), typecheck+lint clean.
+      **Path tomado: `data.listen`** (no hizo falta SSE): emite
+      `session.execution.succeeded/failed` con `data.sessionID`. notify usa options
+      object: `notification: {when:"blurred"}` + `sound: subagent_done|error` (la API
+      no tiene `variant` — diferenciación por prefijo ✔/✗ + sonido). `setup` retorna
+      Cleanup → watcher con dispose determinista.
+- [x] T3 — Close-out: full test/typecheck/lint, vite build, live dashboard check,
+      docs + mirror update. Route: parent.
+      Evidence: parent re-ran `bun run test` → 81/81 (9 files), `typecheck` exit 0.
+      Live: 7777 sirve el bundle nuevo (index-DB0-zHF0.js → 200). Spot check del
+      notify wiring en watch.ts: `when:"blurred"` + sonidos diferenciados ✓.
 
 ## Verification evidence
 
-- (pending)
+- `bun run test` → 81/81 (hub 21, server 15, web format/gantt/reducer 26, tui 19).
+- `bun run typecheck` exit 0; lint: 0 findings en archivos tocados (warnings
+  pre-existentes en src/hub/** quedan como están, fuera de alcance).
+- Dashboard en vivo: `/` + asset 200 con el build F5 (panel + gantt + totales).
+- TUI notify: verificación automática cubre decisión pura + wiring typecheck; el
+  disparo real (sesión blurred + subagent terminando) es verificación manual.
+
+## Known limitations (documented, not defects)
+
+- **Mensajes stream + diff real de ficheros**: imposibles hoy desde un plugin — el
+  contexto no expone lectores de mensajes ni `session.diff` (solo el client crudo).
+  Panel muestra todo lo que el hub sí tiene: task, tool calls, tokens, coste,
+  ficheros tocados (lista), timings. Posible F5.1 si upstream expone la API.
+- Gantt: agentes materializados late-join tienen startedAt del primer evento
+  observado (límite del hub, ya conocido).
 
 ## Delivery strategy
 
-Stacked branch on feat/f4-tui. Forecast ~400-600 authored lines (web panel + gantt +
-tests + tui notify). No push (user decision).
+Stacked branch feat/f5-detail (6ac8000 → 469c428 → 7a8c36e) sobre feat/f4-tui.
+~700 líneas autorizadas. Sin push/PR (decisión del usuario).
 
 ## Open items / next
 
-- Messages stream + real file diffs: needs a grounded read API (investigate upstream
-  plugin surface; possible F5.1).
-- F6: release (README GIF, npm publish files map, tag).
-- Mirror: Engram topic `odd/f5-detail-gantt-notify/tasks`.
+- F6: release (README + GIF, npm publish files map, tag, PR awesome-opencode).
+- Mirror: Engram topic `odd/f5-detail-gantt-notify/tasks` (synced).
