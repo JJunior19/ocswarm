@@ -44,11 +44,19 @@ export function applySnapshot(_state: ClientState, snap: SwarmState): ClientStat
 /** Fold one delta into the client view, mirroring hub semantics. */
 export function applyDelta(state: ClientState, delta: ClientDelta): ClientState {
   switch (delta.type) {
-    case "agent.upsert":
+    case "agent.upsert": {
+      // Wire-boundary guard: a malformed frame (e.g. the bare agent object
+      // instead of { agent }) must never poison the map — a string entry here
+      // used to crash the header totals reduce on missing tokens.
+      const agent = delta.agent as SwarmAgent | undefined;
+      if (!agent || typeof agent !== "object" || typeof agent.sessionID !== "string") {
+        return state;
+      }
       return {
         ...state,
-        agents: { ...state.agents, [delta.agent.sessionID]: delta.agent },
+        agents: { ...state.agents, [agent.sessionID]: agent },
       };
+    }
 
     case "agent.status": {
       const agent = state.agents[delta.sessionID];

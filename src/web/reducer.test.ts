@@ -22,6 +22,36 @@ function agent(overrides: Partial<SwarmAgent> = {}): SwarmAgent {
 
 const EMPTY: ClientState = { roots: [], agents: {} };
 
+describe("malformed agent.upsert frames", () => {
+  it("are ignored instead of poisoning the agent map", () => {
+    let state = applySnapshot(EMPTY, {
+      roots: ["s1"],
+      agents: { s1: agent() },
+      updatedAt: T0,
+    });
+
+    // Historical corruption: the server replayed the BARE agent object, so the
+    // client spread produced agent = "general" (the name string) and stored a
+    // string under key undefined.
+    const malformed = {
+      type: "agent.upsert",
+      sessionID: "s1",
+      agent: "general",
+      title: "do things",
+    } as unknown as Parameters<typeof applyDelta>[1];
+    state = applyDelta(state, malformed);
+    expect(Object.keys(state.agents)).toEqual(["s1"]);
+    expect(state.agents["s1"]?.tokens).toBeDefined();
+
+    // A missing agent payload is equally a no-op.
+    state = applyDelta(state, {
+      type: "agent.upsert",
+      agent: undefined as unknown as SwarmAgent,
+    });
+    expect(Object.keys(state.agents)).toEqual(["s1"]);
+  });
+});
+
 describe("applySnapshot", () => {
   it("replaces roots and agents from the snapshot", () => {
     const prev: ClientState = {

@@ -96,7 +96,10 @@ export function buildApp(deps: ServerDeps): Hono {
       // Late joiners get the full current view first: agents, then roots.
       const snapshot = deps.hub.snapshot();
       for (const agent of Object.values(snapshot.agents)) {
-        await stream.writeSSE({ event: "agent.upsert", data: JSON.stringify(agent) });
+        // Same wire shape as live deltas: payload without the type field.
+        // Sending the bare agent here desynchronized the client, which spread
+        // it into { type, ...payload } and stored the agent NAME as the entry.
+        await stream.writeSSE({ event: "agent.upsert", data: JSON.stringify({ agent }) });
       }
       for (const sessionID of snapshot.roots) {
         await stream.writeSSE({ event: "root.upsert", data: JSON.stringify({ sessionID }) });

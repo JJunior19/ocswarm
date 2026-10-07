@@ -97,6 +97,21 @@ describe("GET /api/stream", () => {
     expect(text).toContain("event: agent.upsert");
     expect(text).toContain(childID);
 
+    // Replay frames must use the SAME wire shape as live deltas — payload
+    // without the type field ({ agent: {...} }), not the bare agent object.
+    const frame = text.split("\n\n").find((block) => block.includes("event: agent.upsert"));
+    expect(frame).toBeDefined();
+    const dataLine = must(frame)
+      .split("\n")
+      .find((line) => line.startsWith("data: "));
+    expect(dataLine).toBeDefined();
+    const payload = JSON.parse(must(dataLine).slice("data: ".length)) as {
+      agent?: { sessionID?: string; tokens?: unknown };
+    };
+    expect(typeof payload.agent).toBe("object");
+    expect(payload.agent?.sessionID).toBe(childID);
+    expect(payload.agent?.tokens).toBeDefined();
+
     await reader.cancel();
     controller.abort();
   });
