@@ -6,8 +6,9 @@ import {
   forceY,
   type SimulationNodeDatum,
 } from "d3-force";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { useMemo, useRef } from "react";
+import { EdgeParticles, type Pos } from "./EdgeParticles";
 import { formatElapsed } from "./format";
 import type { AgentRow } from "./reducer";
 import type { AgentStatus, SwarmAgent } from "./types";
@@ -29,11 +30,6 @@ const STATUS_COLORS: Record<AgentStatus, string> = {
   done: "var(--blue)",
   error: "var(--error)",
 };
-
-interface Pos {
-  x: number;
-  y: number;
-}
 
 interface LayoutNode extends SimulationNodeDatum {
   id: string;
@@ -150,13 +146,28 @@ export function GraphView({
 
   // Edges parent→child, drawn under the nodes. A child whose parent is not
   // visible (e.g. materialized orphan) hangs off the first root when one exists.
+  // `flow` marks running non-archived children (edge particles, F5.3);
+  // `archived` dims the line with the node.
   const fallbackRoot = rows.find((row) => row.depth === 0)?.agent.sessionID;
-  const edges: { id: string; from: Pos; to: Pos }[] = [];
+  const edges: {
+    id: string;
+    from: Pos;
+    to: Pos;
+    flow: boolean;
+    archived: boolean;
+  }[] = [];
   for (const row of rows) {
     if (row.depth === 0) continue;
     const from = positions.get(row.agent.parentID ?? fallbackRoot ?? "");
     const to = positions.get(row.agent.sessionID);
-    if (from && to) edges.push({ id: `${row.agent.sessionID}`, from, to });
+    if (from && to)
+      edges.push({
+        id: row.agent.sessionID,
+        from,
+        to,
+        flow: row.agent.status === "running" && !row.agent.archived,
+        archived: row.agent.archived === true,
+      });
   }
 
   const placed = rows
@@ -164,80 +175,127 @@ export function GraphView({
     .filter((entry): entry is { row: AgentRow; pos: Pos } => entry.pos !== undefined);
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: SVG canvas is pointer-first; keyboard users clear selection with the global Escape handler.
-    <svg
-      className="graph"
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      role="img"
-      aria-label="ocswarm live agent graph"
-      onClick={() => onSelect(undefined)}
-    >
-      <title>ocswarm live agent graph</title>
+    // reducedMotion="user": under prefers-reduced-motion, framer-motion turns
+    // transform animations (spawn springs, hover lift) into instant placement.
+    <MotionConfig reducedMotion="user">
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: SVG canvas is pointer-first; keyboard users clear selection with the global Escape handler. */}
+      <svg
+        className="graph"
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        role="img"
+        aria-label="ocswarm live agent graph"
+        onClick={() => onSelect(undefined)}
+      >
+        <title>ocswarm live agent graph</title>
 
-      {edges.map(({ id, from, to }) => (
-        <line key={id} className="edge" x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
-      ))}
-
-      <AnimatePresence>
-        {placed.map(({ row, pos }) => (
-          // Outer <g> owns the static position and the click target; inner
-          // motion.g owns the spawn/exit spring so CSS scale never fights the
-          // transform.
-          // biome-ignore lint/a11y/useSemanticElements: SVG node groups cannot be <button>; role + tabIndex is the SVG idiom.
-          <g
-            key={row.agent.sessionID}
-            className="node-group"
-            role="button"
-            tabIndex={0}
-            aria-label={`select ${row.agent.agent}`}
-            transform={`translate(${pos.x} ${pos.y})`}
-            onClick={(event) => {
-              event.stopPropagation(); // keep the svg background clear-click
-              onSelect(row.agent.sessionID);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onSelect(row.agent.sessionID);
-              }
-            }}
-          >
-            <motion.g
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 22 }}
-              style={{ originX: 0.5, originY: 0.5 }}
-            >
-              {row.agent.status === "running" && (
-                <circle className="pulse-ring" r={NODE_RADIUS + 6} />
-              )}
-              {selected === row.agent.sessionID && (
-                <circle className="node-selected" r={NODE_RADIUS + 3} />
-              )}
-              <circle
-                className="node-circle"
-                r={NODE_RADIUS}
-                stroke={STATUS_COLORS[row.agent.status]}
-              />
-              <text className="node-name" y={-(NODE_RADIUS + 24)} textAnchor="middle">
-                {row.agent.agent}
-              </text>
-              <text className="node-task" y={-(NODE_RADIUS + 8)} textAnchor="middle">
-                {truncate(row.agent.task || row.agent.title)}
-              </text>
-              {row.agent.currentTool && (
-                <text className="node-tool" y={NODE_RADIUS + 18} textAnchor="middle">
-                  {`▸ ${row.agent.currentTool.name}`}
-                </text>
-              )}
-              <text className="node-elapsed" y={NODE_RADIUS + 38} textAnchor="middle">
-                {formatElapsed((row.agent.endedAt ?? now) - row.agent.startedAt)}
-              </text>
-            </motion.g>
-          </g>
+        {edges.map(({ id, from, to, archived }) => (
+          <line
+            key={id}
+            className={archived ? "edge edge-archived" : "edge"}
+            x1={from.x}
+            y1={from.y}
+            x2={to.x}
+            y2={to.y}
+          />
         ))}
-      </AnimatePresence>
-    </svg>
+
+        {/* Flow dots under the nodes, only while a child is running (F5.3). */}
+        {edges
+          .filter((edge) => edge.flow)
+          .map(({ id, from, to }) => (
+            <EdgeParticles key={id} from={from} to={to} />
+          ))}
+
+        <AnimatePresence>
+          {placed.map(({ row, pos }, index) => {
+            const archived = row.agent.archived === true;
+            // Spawn stagger follows the sorted-by-startedAt order: later agents
+            // pop in just after their earlier siblings.
+            const spawnDelay = Math.min(index * 0.05, 0.25);
+            return (
+              // Outer <g> owns the static position and the click target; inner
+              // motion.g owns the spawn/exit spring so CSS scale never fights the
+              // transform.
+              // biome-ignore lint/a11y/useSemanticElements: SVG node groups cannot be <button>; role + tabIndex is the SVG idiom.
+              <g
+                key={row.agent.sessionID}
+                className={`node-group${archived ? " node-group-archived" : ""}${
+                  selected === row.agent.sessionID ? " node-group-selected" : ""
+                }`}
+                role="button"
+                tabIndex={0}
+                aria-label={`select ${row.agent.agent}`}
+                transform={`translate(${pos.x} ${pos.y})`}
+                onClick={(event) => {
+                  event.stopPropagation(); // keep the svg background clear-click
+                  onSelect(row.agent.sessionID);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(row.agent.sessionID);
+                  }
+                }}
+              >
+                <motion.g
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{
+                    scale: 1,
+                    opacity: 1,
+                    transition: {
+                      type: "spring",
+                      stiffness: 300,
+                      damping: 20, // slight overshoot on the pop-in
+                      delay: spawnDelay,
+                    },
+                  }}
+                  exit={{
+                    scale: 0,
+                    opacity: 0,
+                    transition: { duration: 0.18, ease: "easeIn" },
+                  }}
+                  whileHover={
+                    archived
+                      ? undefined // archived nodes stay put; still clickable
+                      : {
+                          scale: 1.06,
+                          transition: { type: "spring", stiffness: 400, damping: 17 },
+                        }
+                  }
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  style={{ originX: 0.5, originY: 0.5 }}
+                >
+                  {row.agent.status === "running" && !archived && (
+                    <circle className="pulse-ring" r={NODE_RADIUS + 6} />
+                  )}
+                  {selected === row.agent.sessionID && (
+                    <circle className="node-selected" r={NODE_RADIUS + 3} />
+                  )}
+                  <circle
+                    className="node-circle"
+                    r={NODE_RADIUS}
+                    stroke={STATUS_COLORS[row.agent.status]}
+                  />
+                  <text className="node-name" y={-(NODE_RADIUS + 24)} textAnchor="middle">
+                    {row.agent.agent}
+                  </text>
+                  <text className="node-task" y={-(NODE_RADIUS + 8)} textAnchor="middle">
+                    {truncate(row.agent.task || row.agent.title)}
+                  </text>
+                  {row.agent.currentTool && (
+                    <text className="node-tool" y={NODE_RADIUS + 18} textAnchor="middle">
+                      {`▸ ${row.agent.currentTool.name}`}
+                    </text>
+                  )}
+                  <text className="node-elapsed" y={NODE_RADIUS + 38} textAnchor="middle">
+                    {formatElapsed((row.agent.endedAt ?? now) - row.agent.startedAt)}
+                  </text>
+                </motion.g>
+              </g>
+            );
+          })}
+        </AnimatePresence>
+      </svg>
+    </MotionConfig>
   );
 }

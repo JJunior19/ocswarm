@@ -117,6 +117,11 @@ body {
   stroke-width: 1.5;
 }
 
+/* Edges into archived agents dim along with the node (F5.3). */
+.edge-archived {
+  stroke-opacity: 0.35;
+}
+
 .node-circle {
   fill: var(--panel);
   stroke-width: 2;
@@ -144,11 +149,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Pulsing ring on running agents (SVG circle + CSS animation). */
+/* Pulsing ring on running non-archived agents (SVG circle + CSS animation).
+   F5.3: 2.4s cycle reads calmer than the old 1.6s sprint. */
 @keyframes pulse-ring {
   0% {
     transform: scale(1);
-    opacity: 0.9;
+    opacity: 0.8;
   }
   70% {
     transform: scale(1.4);
@@ -166,7 +172,7 @@ body {
   stroke-width: 2;
   transform-box: fill-box;
   transform-origin: center;
-  animation: pulse-ring 1.6s ease-out infinite;
+  animation: pulse-ring 2.4s ease-out infinite;
 }
 
 /* --- selection (F5) --- */
@@ -182,6 +188,19 @@ body {
   stroke-opacity: 0.55;
   stroke-width: 1.5;
   stroke-dasharray: 3 3;
+}
+
+/* F5.3: selected nodes also get a soft glow behind the dashed ring. */
+.node-group-selected {
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--blue) 45%, transparent));
+}
+
+/* Archived agents (F5.3): dimmed + desaturated, still clickable. The pulse
+   ring, edge particles and hover lift are gated in TSX, not here. Declared
+   after .node-group-selected so the grayscale filter wins when both apply. */
+.node-group-archived {
+  opacity: 0.35;
+  filter: grayscale(1);
 }
 
 /* --- detail panel (F5) --- */
@@ -440,6 +459,13 @@ body {
   border-radius: 3px;
   cursor: pointer;
   min-width: 2px;
+  transform-origin: left center;
+  transition: transform 0.15s ease;
+}
+
+/* F5.3: gentle lift on hover; the bar stays anchored at its start. */
+.gantt-bar:hover {
+  transform: translateY(-1px) scale(1.06);
 }
 
 .gantt-bar-selected {
@@ -475,6 +501,22 @@ body {
 
 .gantt-bar.gantt-running {
   animation: pulse-bar 1.6s ease-in-out infinite;
+}
+
+/* Archived rows (F5.3): same dimmed + desaturated treatment as graph nodes.
+   Bars stay clickable but never pulse or lift. */
+.gantt-row-archived {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.gantt-row-archived .gantt-bar,
+.gantt-row-archived .gantt-bar.gantt-running {
+  animation: none;
+}
+
+.gantt-row-archived .gantt-bar:hover {
+  transform: none;
 }
 
 .gantt-axis .gantt-track {
@@ -554,4 +596,21 @@ body {
 
 .view-pill-active .view-count {
   color: var(--fg);
+}
+
+/* --- reduced motion (F5.3) ---
+   TSX side: GraphView wraps the graph in <MotionConfig reducedMotion="user">
+   (instant springs/hover) and skips edge particles entirely. Here: kill the
+   CSS-driven pulse/lift too. */
+@media (prefers-reduced-motion: reduce) {
+  .pulse-ring,
+  .gantt-bar.gantt-running {
+    animation: none;
+  }
+
+  .gantt-bar,
+  .gantt-bar:hover {
+    transform: none;
+    transition: none;
+  }
 }

@@ -29,6 +29,7 @@ export function Gantt({
         {scale.bars.map((bar) => {
           const agent = byID.get(bar.sessionID);
           if (!agent) return null;
+          const archived = agent.archived === true;
           const classes = [
             "gantt-bar",
             `gantt-${agent.status}`,
@@ -37,7 +38,11 @@ export function Gantt({
             .filter(Boolean)
             .join(" ");
           return (
-            <div key={bar.sessionID} className="gantt-row">
+            // Archived rows dim label + bar together; bars stay clickable.
+            <div
+              key={bar.sessionID}
+              className={archived ? "gantt-row gantt-row-archived" : "gantt-row"}
+            >
               <span className="gantt-label" title={agent.title || agent.task}>
                 {agent.title || agent.task}
               </span>
