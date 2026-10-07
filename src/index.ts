@@ -16,22 +16,28 @@ export default Plugin.define({
     // so list models once at setup and key rates (USD per million tokens) by
     // `providerID/modelID`. Unknown models price to undefined → costUSD stays
     // 0. Base tier = the untiered cost entry, falling back to the first tier.
+    //
+    // Deferred ON PURPOSE: the event tap below must subscribe before this
+    // setup promise yields. Awaiting model.list() first registered the tap
+    // after a real async gap and it never received another event (live
+    // regression). Late rate resolution is harmless: usage tokens are
+    // cumulative, so the next usage.updated recomputes the cost anyway.
     const rates = new Map<string, PricingRate>();
-    try {
-      const models = await ctx.model.list();
-      for (const model of models.data) {
-        const cost = model.cost.find((entry) => entry.tier === undefined) ?? model.cost[0];
-        if (!cost) continue;
-        rates.set(`${model.providerID}/${model.modelID}`, {
-          input: cost.input,
-          output: cost.output,
-          cacheRead: cost.cache.read,
-          cacheWrite: cost.cache.write,
-        });
-      }
-    } catch (error) {
-      console.warn(`[ocswarm] model pricing unavailable — live cost disabled (${error})`);
-    }
+    void ctx.model.list().then(
+      (models) => {
+        for (const model of models.data) {
+          const cost = model.cost.find((entry) => entry.tier === undefined) ?? model.cost[0];
+          if (!cost) continue;
+          rates.set(`${model.providerID}/${model.modelID}`, {
+            input: cost.input,
+            output: cost.output,
+            cacheRead: cost.cache.read,
+            cacheWrite: cost.cache.write,
+          });
+        }
+      },
+      (error) => console.warn(`[ocswarm] model pricing unavailable — live cost disabled (${error})`),
+    );
     const hub = createHub({
       pricing: ({ providerID, modelID }) => rates.get(`${providerID}/${modelID}`),
     });
