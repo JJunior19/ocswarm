@@ -39,29 +39,44 @@ Finish plan.md through F4:
 
 ## Tasks
 
-- [ ] T1 — Dashboard: `src/web/` (Vite app: index.html, App, reducer, hook SSE, graph
+- [x] T1 — Dashboard: `src/web/` (Vite app: index.html, App, reducer, hook SSE, graph
       view, theme), statics en `src/server/app.ts` (staticRoot dep + tests), deps
       (react 19, framer-motion, d3-force, vite, plugin-react, types), scripts de build.
-      Route: delegated writer. Commit: -
-- [ ] T2 — Live verification dashboard: `vite build` + standalone run + curl `/`
-      (HTML) y un asset. Route: parent. Commit: -
-- [ ] T3 — TUI: `src/tui.tsx` real (toast, slot footer, /swarm -> panel ocswarm.tree,
-      `o` abre navegador), `src/tui/discover.ts` (port scan) + tree builder + tests.
-      Route: delegated writer. Commit: -
-- [ ] T4 — Cierre: typecheck/lint/test completos; instrucciones de verificación manual
-      del TUI (interactivo). Route: parent. Commit: -
+      Route: delegated writer. Commit: 1435f24
+      Evidence: 46/46 tests (11 reducer + 7 statics nuevos), vite build emite
+      dist/web/index.html + assets hasheados, smoke Bun: `/` 200 text/html,
+      asset 200 text/javascript, `..%2f` traversal → 404.
+- [x] T2 — Live verification dashboard: standalone run + curl.
+      Route: parent. Evidence: port 7777 `/` sirve el HTML del dashboard
+      (title ocswarm, /assets/index-D2HAlhC9.js → 200 text/javascript).
+- [x] T3 — TUI: `src/tui.tsx` real (toast, footer badge, /swarm -> ocswarm.tree panel,
+      `o` abre navegador), `src/tui/discover.ts` + `tree.ts` + `open.ts` + `TreePanel.tsx`
+      + tests. Route: delegated writer. Commit: f077c1d
+      Deviation aceptada: `src/tui/jsx.d.ts` (module augmentation solid-js JSX para
+      elementos OpenTUI) en vez de tocar tsconfig (jsxImportSource pinned a solid-js;
+      @opentui/solid expone los tipos detrás de su propio jsx-runtime).
+- [x] T4 — Cierre: typecheck/lint/test completos; instrucciones de verificación manual
+      del TUI (interactivo). Route: parent.
+      Evidence: parent re-ran `bun run test` → 56/56 (6 files), `bun run typecheck` →
+      exit 0. TUI runtime no verificable headless — verificación manual del usuario:
+      abrir TUI en el repo → toast con URL, badge 🐝 en footer, /swarm abre panel,
+      `o` abre el dashboard.
 
 ## Verification evidence
 
-- (pending)
+- `bun run test` → 56/56 (hub 19, server statics+api 15, reducer 11, tui discover/tree 11).
+- `bun run typecheck` exit 0; `bun run lint` exit 0.
+- Dashboard servido en vivo desde dist/web (curl `/` HTML + asset 200).
+- TUI: verificación automática cubre lógica pura (discover/tree/open) + typecheck JSX;
+  la parte interactiva (toast/slot/panel) requiere TUI real — pasos manuales arriba.
 
 ## Delivery strategy
 
-ask-on-risk. Forecast ~800-1000 líneas entre ambas fases; branches apiladas ya
-acordadas arriba; sin push/PR (decisión del usuario).
+Branches apiladas: feat/f3-dashboard (1435f24) ← feat/f4-tui (f077c1d).
+Total feature ~1.4k líneas (web app + tui + tests). Sin push/PR (decisión del usuario).
 
 ## Open items / next
 
 - F5: panel de detalle + coste en vivo + Gantt + attention.notify.
-- F6: release (GIF, npm publish, files map).
-- Mirror: Engram topic `odd/f3-f4-dashboard-tui/tasks`.
+- F6: release (GIF, npm publish, files map, README).
+- Mirror: Engram topic `odd/f3-f4-dashboard-tui/tasks` (synced).
