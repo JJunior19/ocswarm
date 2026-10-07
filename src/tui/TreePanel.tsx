@@ -8,7 +8,7 @@
 
 import { usePlugin } from "@opencode/plugin/tui";
 import { createMemo, For } from "solid-js";
-import { openInBrowser } from "./open";
+import { openInBrowser, withSession } from "./open";
 import { buildTreeRows } from "./tree";
 import { getDiscoveredUrl } from "./urls";
 
@@ -39,7 +39,10 @@ export function TreePanel(props: { sessionID?: string }) {
         bind: "o",
         run: () => {
           const url = getDiscoveredUrl();
-          if (url !== undefined) openInBrowser(url);
+          if (url === undefined) return;
+          // Deep link: this panel knows its session, so jump straight to ITS
+          // diagram (F5.1). No session in context → plain dashboard.
+          openInBrowser(props.sessionID ? withSession(url, props.sessionID) : url);
         },
       },
     ],

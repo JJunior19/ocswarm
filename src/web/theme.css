@@ -501,3 +501,57 @@ body {
 .gantt-tick:last-child {
   transform: translateX(-100%);
 }
+
+/* --- session view selector (F5.1) --- */
+
+.view-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.view-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.view-pill:hover {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+.view-pill-active {
+  color: var(--fg);
+  border-color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.view-pill-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.view-pill-active .view-count {
+  color: var(--fg);
+}

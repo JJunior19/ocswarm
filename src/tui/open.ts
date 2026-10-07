@@ -23,3 +23,11 @@ export function openInBrowser(url: string): void {
     console.log(`ocswarm: failed to open ${url}`);
   }
 }
+
+/**
+ * Deep link to one session's diagram (F5.1): `<url>/?session=<sessionID>`.
+ * Strips a trailing slash first so the path never doubles up.
+ */
+export function withSession(url: string, sessionID: string): string {
+  return `${url.replace(/\/+$/, "")}/?session=${sessionID}`;
+}

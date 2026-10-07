@@ -9,8 +9,8 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useRef } from "react";
 import { formatElapsed } from "./format";
-import { type AgentRow, type ClientState, deriveRows } from "./reducer";
-import type { AgentStatus } from "./types";
+import type { AgentRow } from "./reducer";
+import type { AgentStatus, SwarmAgent } from "./types";
 import { useNow } from "./useNow";
 
 // Fixed logical viewport; the SVG scales to its container via CSS.
@@ -18,7 +18,9 @@ const WIDTH = 880;
 const HEIGHT = 560;
 const NODE_RADIUS = 26;
 const ROOT_Y = 90; // roots pinned along the top
-const FIELD_Y = 380; // vertical attractor for the subagent cloud
+const FIELD_Y = 380; // vertical attractor for the flat subagent cloud
+const CLOUD_TOP = 300; // depth-1 band once the tree nests deeper…
+const CLOUD_BOTTOM = 460; // …deepest level (both inside the clamp range)
 const TASK_MAX_CHARS = 40;
 
 const STATUS_COLORS: Record<AgentStatus, string> = {
@@ -35,6 +37,7 @@ interface Pos {
 
 interface LayoutNode extends SimulationNodeDatum {
   id: string;
+  depth: number;
 }
 
 function truncate(text: string, max = TASK_MAX_CHARS): string {
@@ -46,12 +49,24 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Positions for every agent. Roots sit along the top (single root = top
- * center); subagents are spread by a d3-force simulation run synchronously
- * (~300 ticks) — the simulation itself is never animated.
+ * Vertical attractor for a subagent at `depth`: the flat cloud sits on
+ * FIELD_Y exactly as before F5.1; a nested tree fans deeper levels from
+ * CLOUD_TOP down to CLOUD_BOTTOM so ranks read top-to-bottom.
+ */
+function cloudY(depth: number, maxDepth: number): number {
+  if (maxDepth <= 1) return FIELD_Y;
+  const t = (depth - 1) / (maxDepth - 1);
+  return CLOUD_TOP + t * (CLOUD_BOTTOM - CLOUD_TOP);
+}
+
+/**
+ * Positions for every agent. Depth-0 roots sit along the top (single root =
+ * top center); subagents are spread by a d3-force simulation run
+ * synchronously (~300 ticks) — the simulation itself is never animated.
  */
 function computeLayout(rows: AgentRow[]): Map<string, Pos> {
   const positions = new Map<string, Pos>();
+  const maxDepth = rows.reduce((max, row) => Math.max(max, row.depth), 0);
 
   const roots = rows.filter((row) => row.depth === 0);
   roots.forEach((row, index) => {
@@ -61,11 +76,16 @@ function computeLayout(rows: AgentRow[]): Map<string, Pos> {
 
   const nodes: LayoutNode[] = rows
     .filter((row) => row.depth > 0)
-    .map((row) => ({ id: row.agent.sessionID, x: WIDTH / 2, y: FIELD_Y }));
+    .map((row) => ({ id: row.agent.sessionID, depth: row.depth, x: WIDTH / 2, y: FIELD_Y }));
   if (nodes.length > 0) {
     const simulation = forceSimulation(nodes)
       .force("x", forceX<LayoutNode>(WIDTH / 2).strength(0.06))
-      .force("y", forceY<LayoutNode>(FIELD_Y).strength(0.1))
+      .force(
+        "y",
+        forceY<LayoutNode>()
+          .y((node) => cloudY(node.depth, maxDepth))
+          .strength(0.1),
+      )
       .force("charge", forceManyBody<LayoutNode>().strength(-260))
       .force("collide", forceCollide<LayoutNode>(NODE_RADIUS + 36))
       .stop();
@@ -97,16 +117,34 @@ function useNodeLayout(rows: AgentRow[]): Map<string, Pos> {
   return cache.current.positions;
 }
 
+/**
+ * The agent graph for the VISIBLE agents (F5.1: whole swarm in the "all"
+ * view, one root's subtree when a session pill is selected). `depth` maps
+ * each visible session id to its tree depth (0 = root). Node visuals and
+ * selection behavior are unchanged.
+ */
 export function GraphView({
-  state,
+  agents,
+  depth,
   selected,
   onSelect,
 }: {
-  state: ClientState;
+  agents: SwarmAgent[];
+  depth: Map<string, number>;
   selected: string | undefined;
   onSelect: (sessionID: string | undefined) => void;
 }) {
-  const rows = useMemo(() => deriveRows(state), [state]);
+  const rows = useMemo(
+    () =>
+      agents
+        .map((agent) => ({ agent, depth: depth.get(agent.sessionID) ?? (agent.parentID ? 1 : 0) }))
+        .sort(
+          (a, b) =>
+            a.agent.startedAt - b.agent.startedAt ||
+            a.agent.sessionID.localeCompare(b.agent.sessionID),
+        ),
+    [agents, depth],
+  );
   const positions = useNodeLayout(rows);
   const now = useNow();
 
