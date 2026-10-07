@@ -6,3 +6,4 @@ dist/
 .atl/
 .astro/
 .venv/
+.gentle-ai-default-agent.json
