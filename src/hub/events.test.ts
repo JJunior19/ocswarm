@@ -289,6 +289,64 @@ describe("late-joining streams", () => {
     expect(late.startedAt).toBe(20);
     expect(hub.snapshot().roots).toEqual([]); // parentage unknown → never a root
   });
+
+  it("backfills the real agent name from step.started for unknown agents", () => {
+    const hub = createHub();
+    hub.apply({ type: "session.execution.started", created: 20, data: { sessionID: "ses_late" } });
+    const deltas = hub.apply({
+      type: "session.step.started",
+      created: 30,
+      data: {
+        sessionID: "ses_late",
+        assistantMessageID: "msg_1",
+        agent: "gentle-orchestrator",
+        model: { id: "m", providerID: "p" },
+      },
+    });
+    expect(deltas).toEqual([
+      {
+        type: "agent.upsert",
+        agent: expect.objectContaining({ sessionID: "ses_late", agent: "gentle-orchestrator" }),
+      },
+    ]);
+    expect(must(hub.snapshot().agents["ses_late"]).agent).toBe("gentle-orchestrator");
+  });
+
+  it("never overwrites a known agent name and never materializes from step events", () => {
+    const hub = createHub();
+    hub.apply({
+      type: "session.created",
+      created: 1,
+      data: { sessionID: "ses_known", agent: "general", title: "Do things" },
+    });
+    expect(
+      hub.apply({
+        type: "session.step.started",
+        created: 5,
+        data: {
+          sessionID: "ses_known",
+          assistantMessageID: "msg_1",
+          agent: "something-else",
+          model: { id: "m", providerID: "p" },
+        },
+      }),
+    ).toEqual([]);
+    expect(must(hub.snapshot().agents["ses_known"]).agent).toBe("general");
+    // Step events for a completely unknown session do not create agents.
+    expect(
+      hub.apply({
+        type: "session.step.started",
+        created: 6,
+        data: {
+          sessionID: "ses_ghost",
+          assistantMessageID: "msg_2",
+          agent: "explore",
+          model: { id: "m", providerID: "p" },
+        },
+      }),
+    ).toEqual([]);
+    expect(hub.snapshot().agents["ses_ghost"]).toBeUndefined();
+  });
 });
 
 describe("snapshot isolation", () => {

@@ -15,6 +15,9 @@
  *   (sessionID, agent "unknown", empty title/task, startedAt = event time) so
  *   late-joining streams never drop a live session. Materialized agents are
  *   never added to `roots` (parentage unknown).
+ * - Identity backfill: `session.step.started` carries the driving agent's
+ *   name, so a materialized "unknown" agent adopts its real name on the next
+ *   step (patch-only — step events never materialize).
  * - `session.usage.updated` is the single source of truth for tokens/cost
  *   (cumulative per session → overwrite, never add). `session.step.ended`
  *   tokens/cost are per-step and ignored; only its `files` merge into
@@ -306,6 +309,21 @@ export function createHub(): Hub {
         agent.status = "idle";
         agent.endedAt = created;
         return [{ type: "agent.status", sessionID, status: "idle", at: created }];
+      }
+
+      // Late-join identity backfill: step.started carries the driving agent's
+      // name, so an agent materialized as "unknown" (its session.created
+      // predated the plugin) gets its real name here. Patches only existing
+      // agents — step events still never materialize (no phantom orchestrators).
+      case "session.step.started": {
+        if (!sessionID) return [];
+        const agent = state.agents[sessionID];
+        if (!agent || agent.agent !== "unknown") return [];
+        const name = asString(data, "agent");
+        if (!name) return [];
+        state.updatedAt = created;
+        agent.agent = name;
+        return [{ type: "agent.upsert", agent: { ...agent } }];
       }
 
       case "session.step.ended": {
