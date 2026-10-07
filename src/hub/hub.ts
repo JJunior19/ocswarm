@@ -31,6 +31,15 @@
  *   `cost` field is kept as before (0 in practice — never fabricate).
  * - `session.execution.interrupted` maps to `idle`, not `error`: the agent
  *   stopped on demand (user/shutdown/superseded/inactivity) — stopped ≠ failed.
+ * - `session.deleted` archives instead of removing (F5.3): OpenCode deletes
+ *   finished subagent sessions, but the agent STAYS in state with
+ *   `archived: true` and `endedAt ??= created`, keeping its truthful final
+ *   status (the UI dims by the flag, not the status). It is dropped from
+ *   `roots` and re-emitted as `agent.upsert` (full clone) so clients keep the
+ *   entry. Retention is capped at ARCHIVED_CAP archived agents: beyond that,
+ *   the OLDEST (by `endedAt ?? startedAt`) are fully evicted with one
+ *   `agent.removed` delta each. Re-deleting an already-archived session is a
+ *   no-op, and re-creating a deleted session clears the flag again.
  * - "currentTool null" from the plan prose is modelled as `undefined` (the
  *   optional `currentTool` field), so clearing emits `{ tool: undefined }`.
  * - `state.updatedAt` is bumped by every recognized, well-formed event
@@ -60,6 +69,9 @@ const SUBAGENT_SUFFIX = /\s*\(@([\w.-]+) subagent\)\s*$/;
 
 /** Hard cap for filesTouched so a runaway session cannot balloon the state. */
 const FILES_CAP = 50;
+
+/** Retention cap (F5.3): archived agents kept after upstream deletion. */
+export const ARCHIVED_CAP = 200;
 
 /** In-flight tool call, keyed by tool-call part id. */
 interface PendingTool {
@@ -162,9 +174,9 @@ export function createHub(deps: HubDeps = {}): Hub {
         const name = asString(data, "agent") ?? parsed.agent ?? "unknown";
         const existing = state.agents[sessionID];
         // Re-creation refreshes identity (agent/title/parent/status, endedAt
-        // back to undefined) while preserving accumulated mutable state for
-        // already-known agents (toolCalls, tokens, costUSD, filesTouched,
-        // currentTool ride along via the spread).
+        // and archived back to undefined) while preserving accumulated mutable
+        // state for already-known agents (toolCalls, tokens, costUSD,
+        // filesTouched, currentTool ride along via the spread).
         const agent: SwarmAgent = existing
           ? {
               ...existing,
@@ -174,6 +186,7 @@ export function createHub(deps: HubDeps = {}): Hub {
               task: parsed.task,
               status: "idle",
               endedAt: undefined,
+              archived: undefined,
             }
           : {
               sessionID,
@@ -235,13 +248,38 @@ export function createHub(deps: HubDeps = {}): Hub {
       case "session.deleted": {
         if (!sessionID) return [];
         sessionModel.delete(sessionID); // recreated sessions restart unpriced
-        const hadAgent = sessionID in state.agents;
+        const agent = state.agents[sessionID];
         const rootIndex = state.roots.indexOf(sessionID);
-        if (!hadAgent && rootIndex < 0) return [];
+        // Re-deleting an already-archived session is a no-op.
+        if (agent?.archived) return [];
+        if (!agent) {
+          // Unknown session: deletion never materializes one. Defensive stale
+          // root cleanup only (roots and agents are kept in sync elsewhere).
+          if (rootIndex < 0) return [];
+          state.updatedAt = created;
+          state.roots.splice(rootIndex, 1);
+          return [{ type: "agent.removed", sessionID }];
+        }
         state.updatedAt = created;
-        if (hadAgent) delete state.agents[sessionID];
+        // Archive, don't remove (F5.3): the entry stays visible (dimmed by
+        // the flag client-side) with its truthful final status — done stays
+        // done, a mid-run deletion keeps running/idle/error. The session
+        // ended somehow, so endedAt falls back to the deletion time.
+        agent.archived = true;
+        agent.endedAt ??= created;
         if (rootIndex >= 0) state.roots.splice(rootIndex, 1);
-        return [{ type: "agent.removed", sessionID }];
+        const deltas: SwarmDelta[] = [{ type: "agent.upsert", agent: cloneAgent(agent) }];
+        // Retention cap: beyond ARCHIVED_CAP archived agents, fully evict the
+        // OLDEST (by endedAt ?? startedAt) with an agent.removed delta each.
+        const archived = Object.values(state.agents).filter((a) => a.archived);
+        if (archived.length > ARCHIVED_CAP) {
+          archived.sort((a, b) => (a.endedAt ?? a.startedAt) - (b.endedAt ?? b.startedAt));
+          for (const victim of archived.slice(0, archived.length - ARCHIVED_CAP)) {
+            delete state.agents[victim.sessionID];
+            deltas.push({ type: "agent.removed", sessionID: victim.sessionID });
+          }
+        }
+        return deltas;
       }
 
       case "session.tool.input.started": {

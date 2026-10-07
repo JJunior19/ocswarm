@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createHub, parseSubagentTitle } from "./hub";
+import { ARCHIVED_CAP, createHub, parseSubagentTitle } from "./hub";
 import type { HubEvent, SwarmDelta } from "./types";
 
 function must<T>(value: T | undefined): T {
@@ -169,7 +169,8 @@ describe("synthetic session.tool.failed", () => {
 });
 
 describe("synthetic session.deleted", () => {
-  it("removes the agent (and root entry), emitting agent.removed", () => {
+  /** Root + subagent child, both known to the hub. */
+  function seededHub(): ReturnType<typeof createHub> {
     const hub = createHub();
     hub.apply({
       type: "session.created",
@@ -186,16 +187,131 @@ describe("synthetic session.deleted", () => {
         title: "peek (@explore subagent)",
       },
     });
-    expect(hub.snapshot().roots).toEqual(["ses_root"]);
+    return hub;
+  }
 
-    expect(
-      hub.apply({ type: "session.deleted", created: 12, data: { sessionID: "ses_kid" } }),
-    ).toEqual([{ type: "agent.removed", sessionID: "ses_kid" }]);
-    expect(hub.snapshot().agents["ses_kid"]).toBeUndefined();
+  it("archives the agent instead of removing it (flag + endedAt + truthful status)", () => {
+    const hub = seededHub();
+    hub.apply({ type: "session.execution.started", created: 12, data: { sessionID: "ses_kid" } });
+    expect(hub.snapshot().roots).toEqual(["ses_root"]); // the kid is a subagent, never a root
 
-    hub.apply({ type: "session.deleted", created: 13, data: { sessionID: "ses_root" } });
-    expect(hub.snapshot().agents).toEqual({});
+    const deltas = hub.apply({
+      type: "session.deleted",
+      created: 13,
+      data: { sessionID: "ses_kid" },
+    });
+    expect(deltas).toEqual([
+      {
+        type: "agent.upsert",
+        agent: expect.objectContaining({
+          sessionID: "ses_kid",
+          archived: true,
+          status: "running", // deleted mid-run keeps its true status; the UI dims by flag
+          endedAt: 13,
+        }),
+      },
+    ]);
+    const kid = must(hub.snapshot().agents["ses_kid"]);
+    expect(kid.archived).toBe(true);
+    expect(kid.status).toBe("running");
+    expect(kid.endedAt).toBe(13);
+    expect(hub.snapshot().roots).toEqual(["ses_root"]); // subagent had no root entry to drop
+  });
+
+  it("archives a root by dropping it from roots, keeping done status and endedAt", () => {
+    const hub = seededHub();
+    hub.apply({
+      type: "session.execution.succeeded",
+      created: 12,
+      data: { sessionID: "ses_root" },
+    });
+
+    const deltas = hub.apply({
+      type: "session.deleted",
+      created: 13,
+      data: { sessionID: "ses_root" },
+    });
+    expect(deltas).toEqual([
+      {
+        type: "agent.upsert",
+        agent: expect.objectContaining({
+          sessionID: "ses_root",
+          archived: true,
+          status: "done",
+          endedAt: 12, // ??= keeps the real end time, not the deletion time
+        }),
+      },
+    ]);
     expect(hub.snapshot().roots).toEqual([]);
+    expect(must(hub.snapshot().agents["ses_root"]).archived).toBe(true);
+  });
+
+  it("re-deleting an already-archived session is a no-op", () => {
+    const hub = seededHub();
+    hub.apply({ type: "session.deleted", created: 12, data: { sessionID: "ses_kid" } });
+    const before = hub.snapshot();
+    expect(
+      hub.apply({ type: "session.deleted", created: 13, data: { sessionID: "ses_kid" } }),
+    ).toEqual([]);
+    expect(hub.snapshot()).toEqual(before);
+  });
+
+  it("evicts the oldest archived agents beyond the cap, emitting agent.removed", () => {
+    const hub = createHub();
+    // ARCHIVED_CAP + 1 subagent sessions, created (and archived) oldest first.
+    for (let i = 0; i <= ARCHIVED_CAP; i++) {
+      hub.apply({
+        type: "session.created",
+        created: 100 + i,
+        data: {
+          sessionID: `ses_a${i}`,
+          parentID: "ses_parent",
+          agent: "explore",
+          title: `archivable ${i}`,
+        },
+      });
+    }
+    for (let i = 0; i <= ARCHIVED_CAP; i++) {
+      const deltas = hub.apply({
+        type: "session.deleted",
+        created: 1000 + i,
+        data: { sessionID: `ses_a${i}` },
+      });
+      if (i < ARCHIVED_CAP) {
+        // Under the cap: pure upserts, nothing evicted yet.
+        expect(deltas.map((delta) => delta.type)).toEqual(["agent.upsert"]);
+      } else {
+        // The (CAP+1)-th archive evicts exactly the oldest archived agent.
+        expect(deltas).toEqual([
+          {
+            type: "agent.upsert",
+            agent: expect.objectContaining({ sessionID: `ses_a${i}`, archived: true }),
+          },
+          { type: "agent.removed", sessionID: "ses_a0" },
+        ]);
+      }
+    }
+    const snapshot = hub.snapshot();
+    expect(Object.keys(snapshot.agents)).toHaveLength(ARCHIVED_CAP);
+    expect(snapshot.agents["ses_a0"]).toBeUndefined(); // oldest evicted fully
+    expect(must(snapshot.agents["ses_a1"]).archived).toBe(true); // newer kept
+    expect(must(snapshot.agents[`ses_a${ARCHIVED_CAP}`]).archived).toBe(true); // newest kept
+  });
+
+  it("re-creating a deleted session clears the archived flag", () => {
+    const hub = seededHub();
+    hub.apply({ type: "session.deleted", created: 12, data: { sessionID: "ses_root" } });
+    expect(must(hub.snapshot().agents["ses_root"]).archived).toBe(true);
+    hub.apply({
+      type: "session.created",
+      created: 13,
+      data: { sessionID: "ses_root", title: "root round two" },
+    });
+    const root = must(hub.snapshot().agents["ses_root"]);
+    expect(root.archived).toBeUndefined();
+    expect(root.status).toBe("idle");
+    expect(root.endedAt).toBeUndefined();
+    expect(hub.snapshot().roots).toEqual(["ses_root"]);
   });
 });
 
@@ -509,7 +625,11 @@ describe("hub.setTitle (F5.3 title backfill)", () => {
 
   it("is a no-op for unknown sessions, empty titles, and unchanged values", () => {
     const hub = createHub();
-    hub.apply({ type: "session.created", created: 1, data: { sessionID: "s", agent: "general", title: "T" } });
+    hub.apply({
+      type: "session.created",
+      created: 1,
+      data: { sessionID: "s", agent: "general", title: "T" },
+    });
     expect(hub.setTitle("ses_ghost", "x", 2)).toEqual([]);
     expect(hub.setTitle("s", "", 3)).toEqual([]);
     expect(hub.setTitle("s", "T", 4)).toEqual([]);
