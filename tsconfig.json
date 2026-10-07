@@ -14,5 +14,5 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js"
   },
-  "include": ["src", "scripts", "vitest.config.ts"]
+  "include": ["src", "scripts", "server.ts", "tui.tsx", "vitest.config.ts"]
 }
