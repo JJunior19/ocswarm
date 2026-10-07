@@ -9,6 +9,11 @@ import { useSwarm } from "./useSwarm";
 /** Sentinel view: every root session's tree in one graph (pre-F5.1 behavior). */
 const ALL_VIEW = "all";
 
+/** JS truncation for pill labels — the header uses CSS ellipsis instead. */
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 /** Deep link support: `?session=<rootID>` selects that session's subtree. */
 function initialView(): string {
   return new URLSearchParams(window.location.search).get("session") ?? ALL_VIEW;
@@ -77,6 +82,11 @@ export function App() {
 
   const selectedAgent = selected === undefined ? undefined : state.agents[selected];
 
+  // F5.3-B: in a scoped view the header carries the session's real title
+  // (what the TUI shows; fallback to the agent name until a title arrives).
+  const viewAgent = view === ALL_VIEW ? undefined : state.agents[view];
+  const viewLabel = viewAgent === undefined ? undefined : viewAgent.title || viewAgent.agent;
+
   const totalTokens = agents.reduce(
     (sum, agent) => sum + agent.tokens.input + agent.tokens.output,
     0,
@@ -86,7 +96,23 @@ export function App() {
   return (
     <div className="app">
       <header className="header">
-        <span className="brand">{"🐝 ocswarm"}</span>
+        <span className="brand">
+          {"🐝 ocswarm"}
+          {viewLabel !== undefined && (
+            <span
+              className="brand-session"
+              title={viewLabel}
+              style={{
+                maxWidth: "48ch",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {` — ${viewLabel}`}
+            </span>
+          )}
+        </span>
         <span className="status">
           <span className={connected ? "dot dot-on" : "dot dot-off"} aria-hidden="true" />
           {connected ? "live" : "connecting"}
@@ -107,20 +133,25 @@ export function App() {
         >
           all sessions
         </button>
-        {pills.map(({ root, count }) => (
-          <button
-            key={root.sessionID}
-            type="button"
-            className={view === root.sessionID ? "view-pill view-pill-active" : "view-pill"}
-            aria-pressed={view === root.sessionID}
-            title={root.title || root.task}
-            onClick={() => onSelectView(root.sessionID)}
-          >
-            <span className={`dot detail-dot detail-${root.status}`} aria-hidden="true" />
-            <span className="view-pill-label">{root.agent}</span>
-            <span className="view-count">{`+${count}`}</span>
-          </button>
-        ))}
+        {pills.map(({ root, count }) => {
+          // F5.3-B: pills show the session title when one is known (the TUI
+          // backfills late-joined sessions), falling back to the agent name.
+          const label = root.title || root.agent;
+          return (
+            <button
+              key={root.sessionID}
+              type="button"
+              className={view === root.sessionID ? "view-pill view-pill-active" : "view-pill"}
+              aria-pressed={view === root.sessionID}
+              title={label}
+              onClick={() => onSelectView(root.sessionID)}
+            >
+              <span className={`dot detail-dot detail-${root.status}`} aria-hidden="true" />
+              <span className="view-pill-label">{truncate(label, 32)}</span>
+              <span className="view-count">{`+${count}`}</span>
+            </button>
+          );
+        })}
       </nav>
       <main className="main">
         <div className="main-body">

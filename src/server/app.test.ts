@@ -117,6 +117,42 @@ describe("GET /api/stream", () => {
   });
 });
 
+describe("POST /api/title", () => {
+  it("backfills the hub title (trimmed) and reports the emitted delta", async () => {
+    const { hub, app } = buildScenario();
+    const childID = must(Object.keys(hub.snapshot().agents)[0]);
+    const res = await app.request("/api/title", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionID: childID, title: "  Implementar ocswarm: fase 2  " }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, updated: 1 });
+    expect(must(hub.snapshot().agents[childID]).title).toBe("Implementar ocswarm: fase 2");
+  });
+
+  it("rejects a missing sessionID with 400", async () => {
+    const { app } = buildScenario();
+    const res = await app.request("/api/title", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "t" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an empty title with 400", async () => {
+    const { hub, app } = buildScenario();
+    const childID = must(Object.keys(hub.snapshot().agents)[0]);
+    const res = await app.request("/api/title", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionID: childID, title: "   " }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 /** Built-dashboard layout: index.html at the root, assets under /assets/. */
 function buildStaticRoot() {
   const outer = mkdtempSync(join(tmpdir(), "ocswarm-static-"));

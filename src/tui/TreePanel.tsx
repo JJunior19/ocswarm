@@ -7,12 +7,15 @@
  */
 
 import { usePlugin } from "@opencode/plugin/tui";
-import { createMemo, For } from "solid-js";
+import { createEffect, createMemo, For } from "solid-js";
 import { openInBrowser, withSession } from "./open";
 import { buildTreeRows } from "./tree";
 import { getDiscoveredUrl } from "./urls";
 
 const MAX_TITLE = 48;
+
+/** SessionIDs whose title was already POSTed to the dashboard (F5.3-B). */
+const titlesSynced = new Set<string>();
 
 const STYLES: Record<string, { glyph: string; fg: string }> = {
   running: { glyph: "●", fg: "#7ee787" },
@@ -47,6 +50,24 @@ export function TreePanel(props: { sessionID?: string }) {
       },
     ],
   }));
+  // Title backfill (F5.3-B): the dashboard may have joined this session's
+  // life late, so POST the real TUI title once per session while the panel
+  // is open. Fire-and-forget: skipped silently without a discovered URL or
+  // a non-empty title, and all fetch errors are swallowed.
+  createEffect(() => {
+    const sessionID = props.sessionID;
+    if (sessionID === undefined || titlesSynced.has(sessionID)) return;
+    const dashboard = getDiscoveredUrl();
+    // .d.ts ground truth: session.get is SYNC (SessionInfo | undefined).
+    const title = context.data.session.get(sessionID)?.title?.trim();
+    if (dashboard === undefined || !title) return;
+    titlesSynced.add(sessionID);
+    void fetch(`${dashboard}/api/title`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionID, title }),
+    }).catch(() => {});
+  });
   return (
     <box title={`🐝 swarm — ${getDiscoveredUrl() ?? "dashboard not found"}`}>
       <For each={rows()}>

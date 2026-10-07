@@ -174,6 +174,23 @@ export function buildApp(deps: ServerDeps): Hono {
     }),
   );
 
+  // Title backfill (F5.3-B): the TUI POSTs a session's real title when its
+  // swarm panel opens, so sessions that joined the hub late recover their
+  // identity on the dashboard. Registered with the other /api/* routes, ahead
+  // of statics; hub.setTitle itself no-ops on unknown/unchanged titles.
+  app.post("/api/title", async (c) => {
+    const body = (await c.req.json().catch(() => undefined)) as
+      | { sessionID?: unknown; title?: unknown }
+      | undefined;
+    const sessionID = typeof body?.sessionID === "string" ? body.sessionID.trim() : "";
+    const title = typeof body?.title === "string" ? body.title.trim() : "";
+    if (!sessionID || !title) {
+      return c.json({ error: "sessionID and title are required" }, 400);
+    }
+    const deltas = deps.hub.setTitle(sessionID, title);
+    return c.json({ ok: true, updated: deltas.length });
+  });
+
   // Static dashboard (F3) + placeholder fallback. Registered LAST so /api/*
   // routes always win; with no staticRoot the F2 behaviour is byte-identical.
   if (deps.staticRoot) {

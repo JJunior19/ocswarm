@@ -34,7 +34,7 @@ export function AgentDetail({ agent, onClose }: { agent: SwarmAgent; onClose: ()
       </header>
 
       <div className="detail-body">
-        <h2 className="detail-title">{agent.title || "(untitled)"}</h2>
+        <h2 className="detail-title">{agent.title || agent.agent || "untitled"}</h2>
         {agent.task && <p className="detail-task">{agent.task}</p>}
 
         <dl className="detail-meta">
