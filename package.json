@@ -2,6 +2,29 @@
   "name": "ocswarm",
   "version": "0.1.0",
   "description": "Live mission control for OpenCode subagents",
+  "license": "MIT",
+  "author": "JJunior19",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JJunior19/ocswarm.git"
+  },
+  "homepage": "https://github.com/JJunior19/ocswarm#readme",
+  "keywords": [
+    "opencode",
+    "plugin",
+    "swarm",
+    "subagents",
+    "dashboard",
+    "tui",
+    "mission-control"
+  ],
+  "files": [
+    "src",
+    "dist/web",
+    "README.md",
+    "LICENSE",
+    "!**/*.test.ts"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -13,7 +36,8 @@
     "typecheck": "tsc --noEmit",
     "build:web": "vite build src/web",
     "lint": "biome check src scripts",
-    "format": "biome check --write src scripts"
+    "format": "biome check --write src scripts",
+    "prepublishOnly": "bun run test && bun run typecheck && bun run build:web"
   },
   "dependencies": {
     "@opencode/plugin": "latest",
