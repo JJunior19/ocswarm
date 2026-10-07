@@ -35,11 +35,20 @@ export default Plugin.define({
             cacheWrite: cost.cache.write,
           });
         }
+        // Debug (F5.2 verification): confirm the map populated. Remove once
+        // live cost is verified.
+        console.warn(`[ocswarm] pricing map loaded: ${rates.size} models`);
       },
       (error) => console.warn(`[ocswarm] model pricing unavailable — live cost disabled (${error})`),
     );
     const hub = createHub({
-      pricing: ({ providerID, modelID }) => rates.get(`${providerID}/${modelID}`),
+      pricing: ({ providerID, modelID }) => {
+        const rate = rates.get(`${providerID}/${modelID}`);
+        if (!rate) {
+          console.warn(`[ocswarm] no pricing for ${providerID}/${modelID} (map has ${rates.size})`);
+        }
+        return rate;
+      },
     });
     /** Connected SSE clients; hub deltas are fanned out to all of them. */
     const broadcaster = new Set<(deltas: SwarmDelta[]) => void>();
